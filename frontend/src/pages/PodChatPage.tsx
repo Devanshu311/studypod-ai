@@ -14,6 +14,7 @@ import {
   ArrowRight,
   Shield,
   Clock,
+  Share2,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { usePodStore } from '../store/podStore';
@@ -298,6 +299,22 @@ export const PodChatPage: React.FC = () => {
                 />
               ))}
             </div>
+
+            <button
+              onClick={() => {
+                if (podId) {
+                  navigator.clipboard.writeText(podId);
+                  toast.success(`Pod Code copied: ${podId}\nShare it with a classmate to join!`, {
+                    duration: 4000,
+                  });
+                }
+              }}
+              className="flex items-center gap-1 rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 transition"
+              title="Copy Pod Invite Code"
+            >
+              <Share2 className="h-4 w-4 text-violet-600" />
+              <span className="hidden sm:inline">Invite Friend</span>
+            </button>
 
             <button
               onClick={() => setShowRightSidebar(!showRightSidebar)}

@@ -1,8 +1,10 @@
+import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.pod import StudyPod, PodMembership
+from app.models.chat import ChatMessage
 from app.models.user import User
 from app.schemas.pod import PodCreate, PodMemberResponse, PodResponse, QueueStatusResponse
 from app.services.matching import add_to_queue, get_queue_position, remove_from_queue
@@ -165,3 +167,64 @@ def leave_pod(
 
     db.commit()
     return {"message": "Successfully left the study pod", "pod_id": pod_id}
+
+
+@router.post("/join/{pod_id}")
+def join_pod_by_id(
+    pod_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Join an existing study pod using an invite link or pod ID."""
+    pod = db.query(StudyPod).filter(StudyPod.id == pod_id.strip()).first()
+    if not pod:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Study pod not found with this invite code"
+        )
+
+    # Check if already a member
+    existing = db.query(PodMembership).filter(
+        PodMembership.pod_id == pod.id,
+        PodMembership.user_id == current_user.id
+    ).first()
+    if existing:
+        return {
+            "message": "You are already a member of this study pod!",
+            "pod": _format_pod_response(pod)
+        }
+
+    # Check max 4 members limit
+    current_count = db.query(PodMembership).filter(PodMembership.pod_id == pod.id).count()
+    if current_count >= 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This study pod is already full (maximum 4 members reached)!"
+        )
+
+    # Add member
+    membership = PodMembership(
+        id=str(uuid.uuid4()),
+        user_id=current_user.id,
+        pod_id=pod.id,
+        role="member"
+    )
+    db.add(membership)
+
+    # Announce new member in pod chat
+    sys_msg = ChatMessage(
+        id=str(uuid.uuid4()),
+        pod_id=pod.id,
+        user_id=None,
+        content=f"👋 Welcome @{current_user.username} who joined the pod via invite link! Say hi!",
+        message_type="system"
+    )
+    db.add(sys_msg)
+    db.commit()
+    db.refresh(pod)
+
+    return {
+        "message": f"Successfully joined '{pod.name}'!",
+        "pod": _format_pod_response(pod)
+    }
+

@@ -175,6 +175,11 @@ export const podAPI = {
     const res = await api.post(`/pods/${id}/leave`);
     return res.data;
   },
+
+  joinPodById: async (podId: string): Promise<{ message: string; pod: Pod }> => {
+    const res = await api.post(`/pods/join/${podId}`);
+    return res.data;
+  },
 };
 
 export const milestoneAPI = {
