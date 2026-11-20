@@ -37,6 +37,7 @@ def _format_pod_response(pod: StudyPod) -> PodResponse:
 
 
 @router.post("/join-queue")
+@router.post("/queue/join")
 def join_matching_queue(
     pod_in: Optional[PodCreate] = None,
     current_user: User = Depends(get_current_user),
@@ -72,6 +73,7 @@ def join_matching_queue(
 
 
 @router.get("/queue-status", response_model=QueueStatusResponse)
+@router.get("/queue/status", response_model=QueueStatusResponse)
 def get_user_queue_status(
     exam_category: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user)
@@ -96,6 +98,7 @@ def get_user_queue_status(
 
 
 @router.get("/my-pods", response_model=List[PodResponse])
+@router.get("/my", response_model=List[PodResponse])
 def get_my_pods(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
