@@ -19,11 +19,13 @@ import {
   Share2,
   Copy,
   UserPlus,
+  Search,
+  GraduationCap,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { usePodStore } from '../store/podStore';
 import { milestoneAPI, podAPI } from '../services/api';
-import { Milestone, StudyStats } from '../types';
+import { Milestone, StudyStats, PeerStudent } from '../types';
 import Avatar from '../components/Avatar';
 import MilestoneCard from '../components/MilestoneCard';
 
@@ -52,11 +54,65 @@ export const DashboardPage: React.FC = () => {
   const [selectedExam, setSelectedExam] = useState(user?.target_exam || 'JEE 2027');
   const [isQueueing, setIsQueueing] = useState(false);
 
+  // Peer Discovery state
+  const [peers, setPeers] = useState<PeerStudent[]>([]);
+  const [peersLoading, setPeersLoading] = useState(false);
+  const [peerSearch, setPeerSearch] = useState('');
+  const [peerExamFilter, setPeerExamFilter] = useState('all');
+
+  const loadPeers = async () => {
+    setPeersLoading(true);
+    try {
+      const data = await podAPI.getPeers(peerSearch, peerExamFilter);
+      setPeers(data);
+    } catch {
+      setPeers([]);
+    } finally {
+      setPeersLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchPods().catch((err) => console.error('Error fetching pods:', err));
     checkQueueStatus().catch((err) => console.error('Error checking queue:', err));
     loadMyMilestones();
+    loadPeers();
   }, []);
+
+  useEffect(() => {
+    loadPeers();
+  }, [peerExamFilter]);
+
+  const handleInvitePeer = async (peer: PeerStudent) => {
+    if (pods.length === 0) {
+      toast.error('You need to join or create a Study Pod first!');
+      return;
+    }
+    const currentPod = pods[0];
+    try {
+      const res = await podAPI.invitePeer(currentPod.id, peer.id);
+      toast.success(res.message || `Added @${peer.username} to your pod!`);
+      await fetchPods();
+      await loadPeers();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to add student to pod');
+    }
+  };
+
+  const handleJoinPeerPod = async (peer: PeerStudent) => {
+    if (!peer.pod_id) {
+      toast.error(`@${peer.username} is not in an active pod yet!`);
+      return;
+    }
+    try {
+      const res = await podAPI.joinPodById(peer.pod_id);
+      toast.success(res.message || `Joined ${peer.current_pod}!`);
+      await fetchPods();
+      navigate(`/pod/${peer.pod_id}`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to join this pod');
+    }
+  };
 
   useEffect(() => {
     if (user?.target_exam) {
@@ -485,6 +541,140 @@ export const DashboardPage: React.FC = () => {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Peer Discovery Section */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-4">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Users className="h-5 w-5 text-violet-600" />
+              Find Study Buddies & Active Students
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Discover and connect with fellow students preparing for exams. Join their pods or invite them to study together!
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                value={peerSearch}
+                onChange={(e) => setPeerSearch(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && loadPeers()}
+                placeholder="Search by name..."
+                className="rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-violet-500 focus:bg-white focus:outline-none"
+              />
+            </div>
+
+            <select
+              value={peerExamFilter}
+              onChange={(e) => setPeerExamFilter(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700 font-medium focus:border-violet-500 focus:bg-white focus:outline-none"
+            >
+              <option value="all">All Exams</option>
+              <option value="GATE CS">GATE CS</option>
+              <option value="JEE 2027">JEE 2027</option>
+              <option value="University Semester">University Semester</option>
+              <option value="UPSC CSE">UPSC CSE</option>
+              <option value="CAT 2027">CAT 2027</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Peers Grid */}
+        {peersLoading ? (
+          <div className="flex h-32 items-center justify-center">
+            <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-solid border-violet-600 border-r-transparent" />
+          </div>
+        ) : peers.length === 0 ? (
+          <div className="rounded-xl bg-slate-50 p-6 text-center text-xs text-slate-500">
+            No students found matching this filter. Try selecting another exam or clearing the search!
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {peers.map((peer) => (
+              <div
+                key={peer.id}
+                className="group relative flex flex-col justify-between rounded-xl border border-slate-200 bg-slate-50/50 p-4 transition hover:bg-white hover:border-violet-300 hover:shadow-sm"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <Avatar username={peer.username} size="md" online={true} />
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900 group-hover:text-violet-600 transition">
+                          {peer.username}
+                        </h4>
+                        <p className="text-[11px] text-slate-500 flex items-center gap-1">
+                          <GraduationCap className="h-3 w-3 text-slate-400" />
+                          {peer.university}
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
+                      {peer.target_exam}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-3 text-xs text-slate-600">
+                    <span className="flex items-center gap-1 font-semibold text-amber-600">
+                      <Flame className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+                      {peer.study_streak}d streak
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1 text-slate-500">
+                      <Clock className="h-3 w-3 text-slate-400" />
+                      {peer.minutes_studied}m focused
+                    </span>
+                  </div>
+
+                  {peer.current_pod && (
+                    <div className="mt-2 text-[11px] text-slate-500 truncate">
+                      Pod: <span className="font-medium text-slate-700">{peer.current_pod}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 flex items-center gap-2 border-t border-slate-200/60 pt-3">
+                  {peer.pod_id && (!pods.some((p) => p.id === peer.pod_id)) ? (
+                    <button
+                      onClick={() => handleJoinPeerPod(peer)}
+                      className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-teal-600 py-1.5 text-xs font-bold text-white hover:bg-teal-700 transition"
+                    >
+                      <Users className="h-3.5 w-3.5" />
+                      <span>Join Their Pod</span>
+                    </button>
+                  ) : null}
+
+                  {pods.length > 0 && pods[0].members.length < 4 && !pods[0].members.some((m) => m.user_id === peer.id) ? (
+                    <button
+                      onClick={() => handleInvitePeer(peer)}
+                      className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-violet-600 py-1.5 text-xs font-bold text-white hover:bg-violet-700 transition"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      <span>Invite to My Pod</span>
+                    </button>
+                  ) : null}
+
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(`Hi @${peer.username}, let's study together on StudyPod AI!`);
+                      toast.success(`Invite message copied for @${peer.username}!`);
+                    }}
+                    className="flex items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition"
+                    title="Send invite text"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Recent Activity Feed at bottom */}

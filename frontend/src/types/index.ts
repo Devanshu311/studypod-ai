@@ -115,3 +115,16 @@ export interface PomodoroStartData {
   duration_minutes?: number;
   break_minutes?: number;
 }
+
+export interface PeerStudent {
+  id: string;
+  username: string;
+  university: string;
+  target_exam: string;
+  subjects: string[];
+  study_streak: number;
+  minutes_studied: number;
+  current_pod?: string;
+  pod_id?: string;
+}
+

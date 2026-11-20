@@ -228,3 +228,94 @@ def join_pod_by_id(
         "pod": _format_pod_response(pod)
     }
 
+
+@router.get("/community/peers")
+def get_community_peers(
+    search: Optional[str] = None,
+    exam: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List other students on the platform to discover study buddies and invite them to pods."""
+    query = db.query(User).filter(User.id != current_user.id)
+    if search and search.strip():
+        query = query.filter(User.username.ilike(f"%{search.strip()}%"))
+    if exam and exam != "all":
+        query = query.filter(User.target_exam == exam)
+
+    users = query.limit(20).all()
+    results = []
+    for u in users:
+        first_mem = db.query(PodMembership).filter(PodMembership.user_id == u.id).first()
+        pod_name = first_mem.pod.name if first_mem and first_mem.pod else None
+        pod_id = first_mem.pod.id if first_mem and first_mem.pod else None
+
+        log = u.study_logs[0] if u.study_logs else None
+        results.append({
+            "id": u.id,
+            "username": u.username,
+            "university": u.university or "University Student",
+            "target_exam": u.target_exam,
+            "subjects": u.subjects or [],
+            "study_streak": log.streak_count if log else 1,
+            "minutes_studied": log.minutes_studied if log else 0,
+            "current_pod": pod_name,
+            "pod_id": pod_id
+        })
+    return results
+
+
+@router.post("/{pod_id}/invite-peer/{target_user_id}")
+def invite_peer_to_pod(
+    pod_id: str,
+    target_user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Directly add a discovered peer into your study pod."""
+    pod = db.query(StudyPod).filter(StudyPod.id == pod_id).first()
+    if not pod:
+        raise HTTPException(status_code=404, detail="Pod not found")
+
+    target_user = db.query(User).filter(User.id == target_user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    existing = db.query(PodMembership).filter(
+        PodMembership.pod_id == pod_id,
+        PodMembership.user_id == target_user_id
+    ).first()
+    if existing:
+        return {
+            "message": f"@{target_user.username} is already in this pod!",
+            "pod": _format_pod_response(pod)
+        }
+
+    current_count = db.query(PodMembership).filter(PodMembership.pod_id == pod_id).count()
+    if current_count >= 4:
+        raise HTTPException(status_code=400, detail="This study pod is already full (max 4 members)!")
+
+    membership = PodMembership(
+        id=str(uuid.uuid4()),
+        user_id=target_user.id,
+        pod_id=pod.id,
+        role="member"
+    )
+    db.add(membership)
+
+    msg = ChatMessage(
+        id=str(uuid.uuid4()),
+        pod_id=pod.id,
+        user_id=None,
+        content=f"🤝 @{current_user.username} invited @{target_user.username} to join the pod! Welcome!",
+        message_type="system"
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(pod)
+    return {
+        "message": f"Added @{target_user.username} to '{pod.name}'!",
+        "pod": _format_pod_response(pod)
+    }
+
+

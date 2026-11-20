@@ -11,6 +11,7 @@ import {
   AuthTokens,
   MilestoneCreateData,
   PomodoroStartData,
+  PeerStudent,
 } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL
@@ -178,6 +179,19 @@ export const podAPI = {
 
   joinPodById: async (podId: string): Promise<{ message: string; pod: Pod }> => {
     const res = await api.post(`/pods/join/${podId}`);
+    return res.data;
+  },
+
+  getPeers: async (search?: string, exam?: string): Promise<PeerStudent[]> => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (exam && exam !== 'all') params.append('exam', exam);
+    const res = await api.get<PeerStudent[]>(`/pods/community/peers?${params.toString()}`);
+    return res.data;
+  },
+
+  invitePeer: async (podId: string, peerId: string): Promise<{ message: string; pod: Pod }> => {
+    const res = await api.post(`/pods/${podId}/invite-peer/${peerId}`);
     return res.data;
   },
 };
